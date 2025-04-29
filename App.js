@@ -466,9 +466,6 @@ function App() {
 
   const handleBuyProperty = async (propertyId, price) => {
     try {
-      if (!window.confirm(`Are you sure you want to buy this property for ${price} ETH?`)) {
-        return;
-      }
       
       setLoading(true);
       

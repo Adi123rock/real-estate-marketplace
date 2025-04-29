@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import Web3 from 'web3';
+import { ToastContainer, toast } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import RealEstateMarketplaceContract from './contracts/RealEstateMarketplace.json';
 import PropertyList from './components/PropertyList';
 import PropertyForm from './components/PropertyForm';
 import UserProperties from './components/UserProperties';
 import LoadingSpinner from './components/LoadingSpinner';
-import Notification from './components/Notification';
 import './App.css';
 
 function App() {
@@ -18,7 +19,7 @@ function App() {
   const [activeTab, setActiveTab] = useState('marketplace');
   const [selectedAccount, setSelectedAccount] = useState(0);
   const [transactionsInProgress, setTransactionsInProgress] = useState({});
-  const [notification, setNotification] = useState({ show: false, message: '', type: '' });
+  const [confirmDialog, setConfirmDialog] = useState({ show: false, propertyId: null, price: null });
 
   useEffect(() => {
     const initWeb3 = async () => {
@@ -121,16 +122,16 @@ function App() {
   }, [web3, selectedAccount]); // Add selectedAccount as a dependency
 
   const showNotification = (message, type) => {
-    setNotification({ 
-      show: true, 
-      message, 
-      type 
+    toast[type](message, {
+      position: "top-right",
+      autoClose: 5000,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+      progress: undefined,
+      theme: "dark",
     });
-    
-    // Auto-hide notification after 5 seconds
-    setTimeout(() => {
-      setNotification({ show: false, message: '', type: '' });
-    }, 5000);
   };
 
   const setupEventListeners = (contractInstance) => {
@@ -186,7 +187,7 @@ function App() {
           }
         });
         
-        // If current user is the owner, update user properties too
+        // If current user is the owner, update userProperties too
         if (isOwner) {
           setUserProperties(prevUserProperties => {
             const existingPropertyIndex = prevUserProperties.findIndex(p => p.id === propertyId);
@@ -422,17 +423,45 @@ function App() {
   
       // Then send the actual transaction
       const receipt = await contract.methods.listProperty(location, priceInWei).send({
-        from: accounts[selectedAccount], // Use selected account
+        from: accounts[selectedAccount],
         type: '0x0',
         gas: 3000000
       });
       
       console.log("Property listing receipt:", receipt);
       
-      // Directly reload all properties to make sure we have the latest state
-      await loadProperties(contract, accounts[selectedAccount]);
+      // Get the property ID from the event
+      const propertyId = receipt.events.PropertyListed.returnValues.propertyId;
+      
+      // Get the property details
+      const property = await contract.methods.getProperty(propertyId).call();
+      const isOwner = await contract.methods.isOwner(propertyId).call({ 
+        from: accounts[selectedAccount] 
+      });
+      
+      const formattedProperty = {
+        id: propertyId,
+        location: property[0],
+        price: web3.utils.fromWei(property[1], 'ether'),
+        owner: property[2],
+        isForSale: property[3],
+        isCurrentUserOwner: isOwner
+      };
+      
+      // Update both properties and userProperties
+      setProperties(prev => [...prev, formattedProperty]);
+      setUserProperties(prev => [...prev, formattedProperty]);
+      
+      // Clear transaction in progress
+      setTransactionsInProgress(prev => {
+        const updated = {...prev};
+        delete updated[`list-${tempId}`];
+        return updated;
+      });
       
       setLoading(false);
+      showNotification("Property listed successfully!", "success");
+      
     } catch (error) {
       console.error("Error listing property:", error);
       showNotification(`Failed to list property: ${error.message}`, "error");
@@ -474,11 +503,22 @@ function App() {
 
   const handleBuyProperty = async (propertyId, price) => {
     try {
-      if (!window.confirm(`Are you sure you want to buy this property for ${price} ETH?`)) {
-        return;
-      }
-      
+      // Remove the window.confirm and use state to show custom dialog
+      setConfirmDialog({
+        show: true,
+        propertyId,
+        price,
+      });
+    } catch (error) {
+      console.error("Error preparing purchase:", error);
+      showNotification("Error preparing purchase", "error");
+    }
+  };
+
+  const confirmPurchase = async () => {
+    try {
       setLoading(true);
+      const { propertyId, price } = confirmDialog;
       
       // First check if the user owns the property
       const isOwner = await contract.methods.isOwner(propertyId).call({ from: accounts[selectedAccount] });
@@ -523,9 +563,12 @@ function App() {
       // Clear transaction in progress
       setTransactionsInProgress(prev => {
         const updated = {...prev};
-        delete updated[`buy-${propertyId}`];
+        delete updated[`buy-${confirmDialog.propertyId}`];
         return updated;
       });
+    } finally {
+      // Clear the confirmation dialog
+      setConfirmDialog({ show: false, propertyId: null, price: null });
     }
   };
 
@@ -654,12 +697,43 @@ function App() {
 
   return (
     <div className="App">
-      {notification.show && (
-        <Notification 
-          message={notification.message} 
-          type={notification.type} 
-          onClose={() => setNotification({ show: false, message: '', type: '' })}
-        />
+      <ToastContainer
+        position="top-right"
+        autoClose={5000}
+        hideProgressBar={false}
+        newestOnTop
+        closeOnClick
+        rtl={false}
+        pauseOnFocusLoss
+        draggable
+        pauseOnHover
+        theme="dark"
+      />
+      
+      {/* Add Confirmation Dialog */}
+      {confirmDialog.show && (
+        <div className="dialog-overlay">
+          <div className="dialog-content">
+            <h2 className="dialog-title">Confirm Purchase</h2>
+            <div className="dialog-body">
+              Are you sure you want to buy this property for {confirmDialog.price} ETH?
+            </div>
+            <div className="dialog-actions">
+              <button 
+                className="btn-secondary" 
+                onClick={() => setConfirmDialog({ show: false, propertyId: null, price: null })}
+              >
+                Cancel
+              </button>
+              <button 
+                className="btn-primary" 
+                onClick={confirmPurchase}
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
       )}
       
       <header className="App-header">
@@ -734,6 +808,8 @@ function App() {
                 <p>Property ownership transfers immediately</p>
               </div>
             </div>
+
+            <h2 className="section-title">Featured Properties</h2>
           </>
         )}
 
