@@ -1,6 +1,8 @@
 {
   "scripts": {
-    "truffle": "truffle console --network development"
+    "truffle": "truffle migrate --network development",
+    "web": "cd ./client && npm start",
+    "dev": "npm run web "
     
   },
   "dependencies": {
