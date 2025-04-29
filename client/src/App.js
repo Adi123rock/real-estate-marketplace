@@ -166,10 +166,16 @@ function App() {
         
         const formattedProperty = {
           id: propertyId,
-          location: property[0], // location
-          price: web3.utils.fromWei(property[1], 'ether'), // price
-          owner: property[2], // owner
-          isForSale: property[3], // isForSale
+          name: property[0],
+          location: property[1],
+          description: property[2],
+          imageUrl: property[3],
+          price: web3.utils.fromWei(property[4], 'ether'),
+          size: property[5],
+          bedrooms: property[6],
+          bathrooms: property[7],
+          owner: property[8],
+          isForSale: property[9],
           isCurrentUserOwner: isOwner
         };
         
@@ -242,10 +248,16 @@ function App() {
         
         const formattedProperty = {
           id: propertyId,
-          location: property[0], // location
-          price: web3.utils.fromWei(property[1], 'ether'), // price
-          owner: property[2], // owner
-          isForSale: property[3], // isForSale
+          name: property[0],
+          location: property[1],
+          description: property[2],
+          imageUrl: property[3],
+          price: web3.utils.fromWei(property[4], 'ether'),
+          size: property[5],
+          bedrooms: property[6],
+          bathrooms: property[7],
+          owner: property[8],
+          isForSale: property[9],
           isCurrentUserOwner: isCurrentUserOwner
         };
         
@@ -304,10 +316,16 @@ function App() {
       
       const formattedProperty = {
         id: propertyId,
-        location: property[0], // location
-        price: web3.utils.fromWei(property[1], 'ether'), // price
-        owner: property[2], // owner
-        isForSale: property[3], // isForSale
+        name: property[0],
+        location: property[1],
+        description: property[2],
+        imageUrl: property[3],
+        price: web3.utils.fromWei(property[4], 'ether'),
+        size: property[5],
+        bedrooms: property[6],
+        bathrooms: property[7],
+        owner: property[8],
+        isForSale: property[9],
         isCurrentUserOwner: isOwner
       };
       
@@ -342,10 +360,8 @@ function App() {
 
   const loadProperties = async (contractInstance, account) => {
     try {
-      // First verify the contract is properly connected
       console.log("Contract address:", contractInstance.options.address);
       
-      // Get property count - add explicit gas limit for this call
       const propertyCount = await contractInstance.methods.getPropertyCount().call({
         from: account,
         gas: 100000
@@ -356,11 +372,9 @@ function App() {
       const allProperties = [];
       const userOwnedProperties = [];
   
-      // Only proceed if we have a valid property count
       if (propertyCount && propertyCount > 0) {
         for (let i = 0; i < propertyCount; i++) {
           try {
-            // Add explicit gas limit for these calls too
             const property = await contractInstance.methods.getProperty(i).call({
               from: account,
               gas: 100000
@@ -373,10 +387,16 @@ function App() {
   
             const formattedProperty = {
               id: i,
-              location: property[0], // location
-              price: web3.utils.fromWei(property[1], 'ether'), // price
-              owner: property[2], // owner
-              isForSale: property[3], // isForSale
+              name: property[0],
+              location: property[1],
+              description: property[2],
+              imageUrl: property[3],
+              price: web3.utils.fromWei(property[4], 'ether'),
+              size: property[5],
+              bedrooms: property[6],
+              bathrooms: property[7],
+              owner: property[8],
+              isForSale: property[9],
               isCurrentUserOwner: isOwner
             };
   
@@ -387,7 +407,6 @@ function App() {
             }
           } catch (propertyError) {
             console.error(`Error loading property ${i}:`, propertyError);
-            // Continue with next property instead of failing the entire process
           }
         }
       }
@@ -396,18 +415,46 @@ function App() {
       setUserProperties(userOwnedProperties);
     } catch (error) {
       console.error("Error loading properties:", error);
-      showNotification("Error loading properties from the contract. Please verify your contract deployment.", "error");
+      showNotification("Error loading properties from the contract", "error");
     }
   };
 
-  const handleListProperty = async (location, price) => {
+  const handleListProperty = async (formData) => {
     try {
       setLoading(true);
-      const priceInWei = web3.utils.toWei(price.toString(), 'ether');
+      
+      // Convert numeric fields to appropriate formats
+      const priceInWei = web3.utils.toWei(formData.price.toString(), 'ether');
+      const size = parseInt(formData.size);
+      const bedrooms = parseInt(formData.bedrooms);
+      const bathrooms = parseInt(formData.bathrooms);
+
+      // Validate numeric conversions
+      if (isNaN(size) || isNaN(bedrooms) || isNaN(bathrooms)) {
+        showNotification("Please enter valid numbers for size, bedrooms, and bathrooms", "error");
+        setLoading(false);
+        return;
+      }
+
+      // Validate string fields
+      if (!formData.name || !formData.location || !formData.description) {
+        showNotification("Please fill in all required fields", "error");
+        setLoading(false);
+        return;
+      }
   
       // Use call first to check if the transaction would succeed
       try {
-        await contract.methods.listProperty(location, priceInWei).call({ from: accounts[selectedAccount] });
+        await contract.methods.listProperty(
+          formData.name,           // string: name
+          formData.location,       // string: location
+          formData.description,    // string: description
+          formData.imageUrl || '', // string: imageUrl
+          priceInWei,             // uint256: price in wei
+          size,                    // uint256: size in square feet
+          bedrooms,               // uint8: number of bedrooms
+          bathrooms               // uint8: number of bathrooms
+        ).call({ from: accounts[selectedAccount] });
       } catch (error) {
         console.error("Validation error:", error);
         showNotification(`Error: ${error.message.split('revert ')[1] || error.message}`, "error");
@@ -416,13 +463,22 @@ function App() {
       }
   
       // Add a transaction in progress marker
-      const tempId = Date.now(); // Use timestamp as a temporary ID
+      const tempId = Date.now();
       setTransactionsInProgress(prev => ({...prev, [`list-${tempId}`]: true}));
       
       showNotification("Listing property... Please wait for confirmation", "info");
   
-      // Then send the actual transaction
-      const receipt = await contract.methods.listProperty(location, priceInWei).send({
+      // Send the actual transaction with the same parameters in the same order
+      const receipt = await contract.methods.listProperty(
+        formData.name,           // string: name
+        formData.location,       // string: location
+        formData.description,    // string: description
+        formData.imageUrl || '', // string: imageUrl
+        priceInWei,             // uint256: price in wei
+        size,                    // uint256: size in square feet
+        bedrooms,               // uint8: number of bedrooms
+        bathrooms               // uint8: number of bathrooms
+      ).send({
         from: accounts[selectedAccount],
         type: '0x0',
         gas: 3000000
@@ -441,10 +497,16 @@ function App() {
       
       const formattedProperty = {
         id: propertyId,
-        location: property[0],
-        price: web3.utils.fromWei(property[1], 'ether'),
-        owner: property[2],
-        isForSale: property[3],
+        name: property[0],
+        location: property[1],
+        description: property[2],
+        imageUrl: property[3],
+        price: web3.utils.fromWei(property[4], 'ether'),
+        size: property[5],
+        bedrooms: property[6],
+        bathrooms: property[7],
+        owner: property[8],
+        isForSale: property[9],
         isCurrentUserOwner: isOwner
       };
       
@@ -764,32 +826,35 @@ function App() {
         </nav>
 
         <div className="wallet-section">
-          <select onChange={handleAccountChange} value={selectedAccount}>
+          <div className="account-display">
+            ACC {selectedAccount + 1}
+          </div>
+          <select 
+            onChange={handleAccountChange} 
+            value={selectedAccount}
+            className="account-select"
+          >
             {accounts.map((account, index) => (
-              <option key={account} value={index}>
-                {account.substring(0, 6)}...{account.substring(38)}
+              <option key={account} value={index} className="account-option">
+                Account {index + 1} • {`${account.substring(0, 6)}...${account.substring(38)}`}
               </option>
             ))}
           </select>
+          <div className="dropdown-arrow">▼</div>
         </div>
       </header>
 
       <main>
         {activeTab === 'marketplace' && (
           <>
-            <div className="search-section">
-              <input
-                type="text"
-                placeholder="Search by location, name..."
-                className="search-input"
-              />
-              <button className="filter-button">
-                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M2 4H14M4 8H12M6 12H10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                </svg>
-                <span>Filters</span>
-              </button>
-            </div>
+            <h2 className="section-title">Featured Properties</h2>
+
+            <PropertyList
+              properties={properties.filter(p => 
+                p.isForSale && !p.isCurrentUserOwner
+              )}
+              onBuy={handleBuyProperty}
+            />
 
             <div className="feature-cards">
               <div className="feature-card">
@@ -808,8 +873,6 @@ function App() {
                 <p>Property ownership transfers immediately</p>
               </div>
             </div>
-
-            <h2 className="section-title">Featured Properties</h2>
           </>
         )}
 
@@ -820,15 +883,11 @@ function App() {
             </div>
           ) : (
             <>
-              {activeTab === 'marketplace' && (
-                <PropertyList
-                  properties={properties.filter(p => p.isForSale)}
-                  onBuy={handleBuyProperty}
-                />
-              )}
               {activeTab === 'my-properties' && (
                 <UserProperties
-                  properties={userProperties}
+                  properties={properties.filter(p => 
+                    p.isCurrentUserOwner
+                  )}
                   onToggleForSale={togglePropertyForSale}
                   onUpdatePrice={updatePropertyPrice}
                 />

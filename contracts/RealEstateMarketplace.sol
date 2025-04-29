@@ -5,16 +5,21 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
  * @title RealEstateMarketplace
- * @dev Implements a decentralized marketplace for real estate properties with image support
+ * @dev Implements a decentralized marketplace for real estate properties
  */
 contract RealEstateMarketplace is ReentrancyGuard {
     // Property struct to hold all property details
     struct Property {
-        string location;
-        uint256 price;
-        address owner;
-        bool isForSale;
-        string imageHash; // IPFS hash or URL for the property image
+        string name;           // Property name
+        string location;       // Property location
+        string description;    // Property description
+        string imageUrl;       // IPFS hash or URL of the property image
+        uint256 price;        // Price in wei
+        uint256 size;         // Size in square feet
+        uint8 bedrooms;       // Number of bedrooms
+        uint8 bathrooms;      // Number of bathrooms
+        address owner;        // Current owner
+        bool isForSale;       // Whether the property is for sale
     }
 
     // Array to store all properties
@@ -24,29 +29,67 @@ contract RealEstateMarketplace is ReentrancyGuard {
     mapping(uint256 => address) public propertyOwner;
 
     // Events
-    event PropertyListed(uint256 indexed propertyId, string location, uint256 price, address owner, string imageHash);
-    event PropertySold(uint256 indexed propertyId, address oldOwner, address newOwner, uint256 price);
-    event PropertyUpdated(uint256 indexed propertyId, uint256 newPrice, bool isForSale);
-    event ImageUpdated(uint256 indexed propertyId, string newImageHash);
+    event PropertyListed(
+        uint256 indexed propertyId,
+        string name,
+        string location,
+        uint256 price,
+        address owner
+    );
+    
+    event PropertySold(
+        uint256 indexed propertyId,
+        address oldOwner,
+        address newOwner,
+        uint256 price
+    );
+    
+    event PropertyUpdated(
+        uint256 indexed propertyId,
+        uint256 newPrice,
+        bool isForSale
+    );
 
     /**
      * @dev List a new property for sale
-     * @param _location String description of property location
+     * @param _name Name of the property
+     * @param _location Location of the property
+     * @param _description Description of the property
+     * @param _imageUrl IPFS hash or URL of the property image
      * @param _price Price in wei
-     * @param _imageHash IPFS hash or URL of the property image
+     * @param _size Size in square feet
+     * @param _bedrooms Number of bedrooms
+     * @param _bathrooms Number of bathrooms
      */
-    function listProperty(string memory _location, uint256 _price, string memory _imageHash) public {
+    function listProperty(
+        string memory _name,
+        string memory _location,
+        string memory _description,
+        string memory _imageUrl,
+        uint256 _price,
+        uint256 _size,
+        uint8 _bedrooms,
+        uint8 _bathrooms
+    ) public {
+        require(bytes(_name).length > 0, "Name cannot be empty");
         require(bytes(_location).length > 0, "Location cannot be empty");
         require(_price > 0, "Price must be greater than zero");
-        require(bytes(_imageHash).length > 0, "Image hash cannot be empty");
+        require(_size > 0, "Size must be greater than zero");
+        require(_bedrooms > 0, "Must have at least one bedroom");
+        require(_bathrooms > 0, "Must have at least one bathroom");
         
         // Create new property
         Property memory newProperty = Property({
+            name: _name,
             location: _location,
+            description: _description,
+            imageUrl: _imageUrl,
             price: _price,
+            size: _size,
+            bedrooms: _bedrooms,
+            bathrooms: _bathrooms,
             owner: msg.sender,
-            isForSale: true,
-            imageHash: _imageHash
+            isForSale: true
         });
         
         // Add property to array
@@ -57,7 +100,7 @@ contract RealEstateMarketplace is ReentrancyGuard {
         propertyOwner[propertyId] = msg.sender;
         
         // Emit event
-        emit PropertyListed(propertyId, _location, _price, msg.sender, _imageHash);
+        emit PropertyListed(propertyId, _name, _location, _price, msg.sender);
     }
 
     /**
@@ -114,24 +157,43 @@ contract RealEstateMarketplace is ReentrancyGuard {
     /**
      * @dev Get a specific property by ID
      * @param _propertyId ID of the property to retrieve
-     * @return location, price, owner, isForSale, imageHash
+     * @return name The name of the property
+     * @return location The location of the property
+     * @return description The description of the property
+     * @return imageUrl The URL or IPFS hash of the property image
+     * @return price The price of the property in wei
+     * @return size The size of the property in square feet
+     * @return bedrooms The number of bedrooms
+     * @return bathrooms The number of bathrooms
+     * @return owner The address of the property owner
+     * @return isForSale Whether the property is currently for sale
      */
     function getProperty(uint256 _propertyId) public view returns (
+        string memory name,
         string memory location,
+        string memory description,
+        string memory imageUrl,
         uint256 price,
+        uint256 size,
+        uint8 bedrooms,
+        uint8 bathrooms,
         address owner,
-        bool isForSale,
-        string memory imageHash
+        bool isForSale
     ) {
         require(_propertyId < properties.length, "Property does not exist");
         Property memory property = properties[_propertyId];
         
         return (
+            property.name,
             property.location,
+            property.description,
+            property.imageUrl,
             property.price,
+            property.size,
+            property.bedrooms,
+            property.bathrooms,
             property.owner,
-            property.isForSale,
-            property.imageHash
+            property.isForSale
         );
     }
     
@@ -178,16 +240,41 @@ contract RealEstateMarketplace is ReentrancyGuard {
     /**
      * @dev Allow owner to update property image
      * @param _propertyId ID of the property to update
-     * @param _newImageHash New IPFS hash or URL of the property image
+     * @param _newImageUrl New image URL
      */
-    function updateImageHash(uint256 _propertyId, string memory _newImageHash) public {
+    function updateImageUrl(uint256 _propertyId, string memory _newImageUrl) public {
         require(_propertyId < properties.length, "Property does not exist");
         require(propertyOwner[_propertyId] == msg.sender, "Only owner can update image");
-        require(bytes(_newImageHash).length > 0, "Image hash cannot be empty");
+        require(bytes(_newImageUrl).length > 0, "Image URL cannot be empty");
         
-        properties[_propertyId].imageHash = _newImageHash;
+        properties[_propertyId].imageUrl = _newImageUrl;
         
         // Emit event for image update
-        emit ImageUpdated(_propertyId, _newImageHash);
+        emit PropertyUpdated(_propertyId, properties[_propertyId].price, properties[_propertyId].isForSale);
+    }
+
+    /**
+     * @dev Allow owner to update property details
+     * @param _propertyId ID of the property to update
+     * @param _price New price in wei
+     * @param _description New description
+     * @param _imageUrl New image URL
+     */
+    function updatePropertyDetails(
+        uint256 _propertyId,
+        uint256 _price,
+        string memory _description,
+        string memory _imageUrl
+    ) public {
+        require(_propertyId < properties.length, "Property does not exist");
+        require(propertyOwner[_propertyId] == msg.sender, "Only owner can update details");
+        require(_price > 0, "Price must be greater than zero");
+        
+        Property storage property = properties[_propertyId];
+        property.price = _price;
+        property.description = _description;
+        property.imageUrl = _imageUrl;
+        
+        emit PropertyUpdated(_propertyId, _price, property.isForSale);
     }
 }

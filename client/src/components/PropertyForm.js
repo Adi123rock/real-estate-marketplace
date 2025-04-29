@@ -16,6 +16,20 @@ const PropertyForm = ({ onSubmit }) => {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    
+    // Handle numeric inputs
+    if (['price', 'size', 'bedrooms', 'bathrooms'].includes(name)) {
+      // Only allow positive numbers
+      const numValue = parseFloat(value);
+      if (value && (isNaN(numValue) || numValue < 0)) {
+        return; // Don't update if invalid number
+      }
+      // For bedrooms and bathrooms, only allow integers
+      if (['bedrooms', 'bathrooms'].includes(name) && !Number.isInteger(numValue)) {
+        return; // Don't update if not an integer
+      }
+    }
+
     setFormData(prev => ({
       ...prev,
       [name]: value
@@ -70,12 +84,27 @@ const PropertyForm = ({ onSubmit }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      // Convert price to ETH format
-      const priceInEth = formData.price;
+      // Validate all required fields
+      if (!formData.name || !formData.location || !formData.description || 
+          !formData.price || !formData.size || !formData.bedrooms || !formData.bathrooms) {
+        alert('Please fill in all required fields');
+        return;
+      }
+
+      // Create property data object with all required fields
+      const propertyData = {
+        name: formData.name,
+        location: formData.location,
+        description: formData.description,
+        imageUrl: formData.imagePreview || '', // Use empty string if no image
+        price: formData.price,
+        size: formData.size,
+        bedrooms: formData.bedrooms,
+        bathrooms: formData.bathrooms
+      };
       
-      // For now, we'll just pass the location and price to match the existing contract
-      // You might want to store the additional data (description, bedrooms, etc.) in a separate system
-      await onSubmit(formData.location, priceInEth);
+      // Submit all property data
+      await onSubmit(propertyData);
       
       // Reset form after successful submission
       setFormData({
@@ -91,6 +120,7 @@ const PropertyForm = ({ onSubmit }) => {
       });
     } catch (error) {
       console.error('Error submitting property:', error);
+      alert('Error listing property: ' + error.message);
     }
   };
 
