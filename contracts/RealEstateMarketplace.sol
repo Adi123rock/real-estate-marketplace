@@ -5,7 +5,7 @@ import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
 
 /**
  * @title RealEstateMarketplace
- * @dev Implements a decentralized marketplace for real estate properties
+ * @dev Implements a decentralized marketplace for real estate properties with image support
  */
 contract RealEstateMarketplace is ReentrancyGuard {
     // Property struct to hold all property details
@@ -14,6 +14,7 @@ contract RealEstateMarketplace is ReentrancyGuard {
         uint256 price;
         address owner;
         bool isForSale;
+        string imageHash; // IPFS hash or URL for the property image
     }
 
     // Array to store all properties
@@ -23,25 +24,29 @@ contract RealEstateMarketplace is ReentrancyGuard {
     mapping(uint256 => address) public propertyOwner;
 
     // Events
-    event PropertyListed(uint256 indexed propertyId, string location, uint256 price, address owner);
+    event PropertyListed(uint256 indexed propertyId, string location, uint256 price, address owner, string imageHash);
     event PropertySold(uint256 indexed propertyId, address oldOwner, address newOwner, uint256 price);
     event PropertyUpdated(uint256 indexed propertyId, uint256 newPrice, bool isForSale);
+    event ImageUpdated(uint256 indexed propertyId, string newImageHash);
 
     /**
      * @dev List a new property for sale
      * @param _location String description of property location
      * @param _price Price in wei
+     * @param _imageHash IPFS hash or URL of the property image
      */
-    function listProperty(string memory _location, uint256 _price) public {
+    function listProperty(string memory _location, uint256 _price, string memory _imageHash) public {
         require(bytes(_location).length > 0, "Location cannot be empty");
         require(_price > 0, "Price must be greater than zero");
+        require(bytes(_imageHash).length > 0, "Image hash cannot be empty");
         
         // Create new property
         Property memory newProperty = Property({
             location: _location,
             price: _price,
             owner: msg.sender,
-            isForSale: true
+            isForSale: true,
+            imageHash: _imageHash
         });
         
         // Add property to array
@@ -52,7 +57,7 @@ contract RealEstateMarketplace is ReentrancyGuard {
         propertyOwner[propertyId] = msg.sender;
         
         // Emit event
-        emit PropertyListed(propertyId, _location, _price, msg.sender);
+        emit PropertyListed(propertyId, _location, _price, msg.sender, _imageHash);
     }
 
     /**
@@ -106,16 +111,17 @@ contract RealEstateMarketplace is ReentrancyGuard {
         return properties.length;
     }
     
-    /*
+    /**
      * @dev Get a specific property by ID
      * @param _propertyId ID of the property to retrieve
-     * @return location, price, owner, isForSale
+     * @return location, price, owner, isForSale, imageHash
      */
     function getProperty(uint256 _propertyId) public view returns (
         string memory location,
         uint256 price,
         address owner,
-        bool isForSale
+        bool isForSale,
+        string memory imageHash
     ) {
         require(_propertyId < properties.length, "Property does not exist");
         Property memory property = properties[_propertyId];
@@ -124,7 +130,8 @@ contract RealEstateMarketplace is ReentrancyGuard {
             property.location,
             property.price,
             property.owner,
-            property.isForSale
+            property.isForSale,
+            property.imageHash
         );
     }
     
@@ -166,5 +173,21 @@ contract RealEstateMarketplace is ReentrancyGuard {
         
         // Emit event for sale status update
         emit PropertyUpdated(_propertyId, properties[_propertyId].price, properties[_propertyId].isForSale);
+    }
+
+    /**
+     * @dev Allow owner to update property image
+     * @param _propertyId ID of the property to update
+     * @param _newImageHash New IPFS hash or URL of the property image
+     */
+    function updateImageHash(uint256 _propertyId, string memory _newImageHash) public {
+        require(_propertyId < properties.length, "Property does not exist");
+        require(propertyOwner[_propertyId] == msg.sender, "Only owner can update image");
+        require(bytes(_newImageHash).length > 0, "Image hash cannot be empty");
+        
+        properties[_propertyId].imageHash = _newImageHash;
+        
+        // Emit event for image update
+        emit ImageUpdated(_propertyId, _newImageHash);
     }
 }
