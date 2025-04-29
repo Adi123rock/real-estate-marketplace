@@ -1,0 +1,721 @@
+import React, { useEffect, useState } from 'react';
+import Web3 from 'web3';
+import RealEstateMarketplaceContract from './contracts/RealEstateMarketplace.json';
+import PropertyList from './components/PropertyList';
+import PropertyForm from './components/PropertyForm';
+import UserProperties from './components/UserProperties';
+import LoadingSpinner from './components/LoadingSpinner';
+import Notification from './components/Notification';
+import './App.css';
+
+function App() {
+  const [web3, setWeb3] = useState(null);
+  const [accounts, setAccounts] = useState([]);
+  const [contract, setContract] = useState(null);
+  const [properties, setProperties] = useState([]);
+  const [userProperties, setUserProperties] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('marketplace');
+  const [selectedAccount, setSelectedAccount] = useState(0);
+  const [transactionsInProgress, setTransactionsInProgress] = useState({});
+  const [notification, setNotification] = useState({ show: false, message: '', type: '' });
+
+  useEffect(() => {
+    const initWeb3 = async () => {
+      try {
+        let web3Instance;
+        
+        // Force connection to Ganache first
+        const ganacheProvider = new Web3.providers.HttpProvider("http://127.0.0.1:7545");
+        web3Instance = new Web3(ganacheProvider);
+        
+        // Test if connected to Ganache
+        try {
+          const networkId = await web3Instance.eth.net.getId();
+          
+          if (networkId === 5777n) {
+            console.log("Connected to Ganache");
+            setWeb3(web3Instance);
+            return;
+          }
+        } catch (error) {
+          console.log("Not connected to Ganache, trying other methods");
+        }
+        
+        // Modern dapp browsers
+        if (window.ethereum) {
+          web3Instance = new Web3(window.ethereum);
+          try {
+            // Request account access
+            await window.ethereum.request({ method: 'eth_requestAccounts' });
+            setWeb3(web3Instance);
+          } catch (error) {
+            showNotification("User denied account access. Please connect your wallet to proceed.", "error");
+          }
+        }
+        // Legacy dapp browsers
+        else if (window.web3) {
+          setWeb3(new Web3(window.web3.currentProvider));
+        } else {
+          showNotification("No Ethereum browser extension detected. Please install MetaMask to use this application.", "error");
+        }
+      } catch (error) {
+        console.error("Could not connect to Web3", error);
+        showNotification("Failed to load Web3. Please install MetaMask or use a Web3 enabled browser.", "error");
+      }
+    };
+
+    initWeb3();
+  }, []);
+
+  useEffect(() => {
+    if (!web3) return;
+  
+    const initContract = async () => {
+      try {
+        const networkId = await web3.eth.net.getId();
+        const deployedNetwork = RealEstateMarketplaceContract.networks[networkId];
+  
+        if (!deployedNetwork) {
+          console.error("Contract not deployed to detected network");
+          showNotification("Contract not found on the current network. Please connect to the correct network.", "error");
+          setLoading(false);
+          return;
+        }
+  
+        const contractInstance = new web3.eth.Contract(
+          RealEstateMarketplaceContract.abi,
+          deployedNetwork && deployedNetwork.address,
+        );
+  
+        setContract(contractInstance);
+  
+        // Get accounts
+        const accs = await web3.eth.getAccounts();
+        setAccounts(accs);
+  
+        // Setup event listeners
+        setupEventListeners(contractInstance);
+  
+        // Load properties
+        await loadProperties(contractInstance, accs[selectedAccount]);
+  
+        setLoading(false);
+        showNotification("Connected to the blockchain successfully!", "success");
+      } catch (error) {
+        console.error("Failed to initialize contract:", error);
+        showNotification("Failed to initialize contract. Please check the console for more details.", "error");
+        setLoading(false);
+      }
+    };
+  
+    initContract();
+  }, [web3, selectedAccount]); // Add selectedAccount as a dependency
+
+  const showNotification = (message, type) => {
+    setNotification({ 
+      show: true, 
+      message, 
+      type 
+    });
+    
+    // Auto-hide notification after 5 seconds
+    setTimeout(() => {
+      setNotification({ show: false, message: '', type: '' });
+    }, 5000);
+  };
+
+  const setupEventListeners = (contractInstance) => {
+    // Remove previous event listeners if they exist
+    if (contractInstance.events.PropertyListed) {
+      contractInstance.events.PropertyListed().unsubscribe();
+    }
+    if (contractInstance.events.PropertySold) {
+      contractInstance.events.PropertySold().unsubscribe();
+    }
+  
+    contractInstance.events.PropertyListed({
+      fromBlock: 'latest'
+    }, async (error, event) => {
+      if (error) {
+        console.error("Error on PropertyListed event:", error);
+        return;
+      }
+      
+      console.log("Property listed event received:", event);
+      
+      const propertyId = parseInt(event.returnValues.propertyId);
+      
+      try {
+        // Get the full property details
+        const property = await contractInstance.methods.getProperty(propertyId).call();
+        
+        // Use the current account from state
+        const isOwner = await contractInstance.methods.isOwner(propertyId).call({ 
+          from: accounts[selectedAccount] 
+        });
+        
+        const formattedProperty = {
+          id: propertyId,
+          location: property[0], // location
+          price: web3.utils.fromWei(property[1], 'ether'), // price
+          owner: property[2], // owner
+          isForSale: property[3], // isForSale
+          isCurrentUserOwner: isOwner
+        };
+        
+        // Update the properties list with the new property
+        setProperties(prevProperties => {
+          // Check if property already exists, if so update it
+          const existingPropertyIndex = prevProperties.findIndex(p => p.id === propertyId);
+          if (existingPropertyIndex >= 0) {
+            const updatedProperties = [...prevProperties];
+            updatedProperties[existingPropertyIndex] = formattedProperty;
+            return updatedProperties;
+          } else {
+            // Add new property
+            return [...prevProperties, formattedProperty];
+          }
+        });
+        
+        // If current user is the owner, update user properties too
+        if (isOwner) {
+          setUserProperties(prevUserProperties => {
+            const existingPropertyIndex = prevUserProperties.findIndex(p => p.id === propertyId);
+            if (existingPropertyIndex >= 0) {
+              const updatedProperties = [...prevUserProperties];
+              updatedProperties[existingPropertyIndex] = formattedProperty;
+              return updatedProperties;
+            } else {
+              return [...prevUserProperties, formattedProperty];
+            }
+          });
+        }
+        
+        // Clear transaction in progress status
+        setTransactionsInProgress(prev => {
+          const updated = {...prev};
+          delete updated[`list-${propertyId}`];
+          return updated;
+        });
+        
+        showNotification("Property listed successfully!", "success");
+      } catch (error) {
+        console.error("Error processing property listed event:", error);
+        showNotification("Error updating UI after property listing", "error");
+      }
+    });
+  
+    contractInstance.events.PropertySold({
+      fromBlock: 'latest'
+    }, async (error, event) => {
+      if (error) {
+        console.error("Error on PropertySold event:", error);
+        return;
+      }
+      
+      console.log("Property sold event received:", event);
+      
+      const propertyId = parseInt(event.returnValues.propertyId);
+      const newOwner = event.returnValues.newOwner;
+      
+      // Use the current account from state
+      const currentUserIsNewOwner = accounts[selectedAccount].toLowerCase() === newOwner.toLowerCase();
+      
+      try {
+        // Get updated property details
+        const property = await contractInstance.methods.getProperty(propertyId).call();
+        
+        // Use the current account from state
+        const isCurrentUserOwner = await contractInstance.methods.isOwner(propertyId).call({ 
+          from: accounts[selectedAccount] 
+        });
+        
+        const formattedProperty = {
+          id: propertyId,
+          location: property[0], // location
+          price: web3.utils.fromWei(property[1], 'ether'), // price
+          owner: property[2], // owner
+          isForSale: property[3], // isForSale
+          isCurrentUserOwner: isCurrentUserOwner
+        };
+        
+        // Update properties list
+        setProperties(prevProperties => {
+          return prevProperties.map(p => 
+            p.id === propertyId ? formattedProperty : p
+          );
+        });
+        
+        // Update user properties based on ownership change
+        setUserProperties(prevUserProperties => {
+          if (currentUserIsNewOwner) {
+            // Add to user properties if the current user is the new owner
+            const existingPropertyIndex = prevUserProperties.findIndex(p => p.id === propertyId);
+            if (existingPropertyIndex >= 0) {
+              const updatedProperties = [...prevUserProperties];
+              updatedProperties[existingPropertyIndex] = formattedProperty;
+              return updatedProperties;
+            } else {
+              return [...prevUserProperties, formattedProperty];
+            }
+          } else {
+            // Remove from user properties if the current user sold it
+            return prevUserProperties.filter(p => p.id !== propertyId);
+          }
+        });
+        
+        // Clear transaction in progress status
+        setTransactionsInProgress(prev => {
+          const updated = {...prev};
+          delete updated[`buy-${propertyId}`];
+          return updated;
+        });
+        
+        if (currentUserIsNewOwner) {
+          showNotification("Congratulations! You've successfully purchased the property.", "success");
+        } else {
+          showNotification("Property sold successfully!", "success");
+        }
+      } catch (error) {
+        console.error("Error processing property sold event:", error);
+        showNotification("Error updating UI after property sale", "error");
+      }
+    });
+  };
+
+  // This function will be called after price update or toggle sale status
+  const updatePropertyInUI = async (contractInstance, propertyId) => {
+    try {
+      // Get the updated property details
+      const property = await contractInstance.methods.getProperty(propertyId).call();
+      const isOwner = await contractInstance.methods.isOwner(propertyId).call({ 
+        from: accounts[selectedAccount] 
+      });
+      
+      const formattedProperty = {
+        id: propertyId,
+        location: property[0], // location
+        price: web3.utils.fromWei(property[1], 'ether'), // price
+        owner: property[2], // owner
+        isForSale: property[3], // isForSale
+        isCurrentUserOwner: isOwner
+      };
+      
+      // Update the properties list
+      setProperties(prevProperties => {
+        return prevProperties.map(p => 
+          p.id === propertyId ? formattedProperty : p
+        );
+      });
+      
+      // Update user properties if the current user is the owner
+      if (isOwner) {
+        setUserProperties(prevUserProperties => {
+          return prevUserProperties.map(p => 
+            p.id === propertyId ? formattedProperty : p
+          );
+        });
+      }
+      
+      // Clear transaction in progress status
+      setTransactionsInProgress(prev => {
+        const updated = {...prev};
+        delete updated[`toggle-${propertyId}`];
+        delete updated[`price-${propertyId}`];
+        return updated;
+      });
+    } catch (error) {
+      console.error("Error updating property in UI:", error);
+      showNotification("Error updating property information in UI", "error");
+    }
+  };
+
+  const loadProperties = async (contractInstance, account) => {
+    try {
+      // First verify the contract is properly connected
+      console.log("Contract address:", contractInstance.options.address);
+      
+      // Get property count - add explicit gas limit for this call
+      const propertyCount = await contractInstance.methods.getPropertyCount().call({
+        from: account,
+        gas: 100000
+      });
+      
+      console.log("Property count:", propertyCount);
+      
+      const allProperties = [];
+      const userOwnedProperties = [];
+  
+      // Only proceed if we have a valid property count
+      if (propertyCount && propertyCount > 0) {
+        for (let i = 0; i < propertyCount; i++) {
+          try {
+            // Add explicit gas limit for these calls too
+            const property = await contractInstance.methods.getProperty(i).call({
+              from: account,
+              gas: 100000
+            });
+            
+            const isOwner = await contractInstance.methods.isOwner(i).call({ 
+              from: account,
+              gas: 100000
+            });
+  
+            const formattedProperty = {
+              id: i,
+              location: property[0], // location
+              price: web3.utils.fromWei(property[1], 'ether'), // price
+              owner: property[2], // owner
+              isForSale: property[3], // isForSale
+              isCurrentUserOwner: isOwner
+            };
+  
+            allProperties.push(formattedProperty);
+  
+            if (isOwner) {
+              userOwnedProperties.push(formattedProperty);
+            }
+          } catch (propertyError) {
+            console.error(`Error loading property ${i}:`, propertyError);
+            // Continue with next property instead of failing the entire process
+          }
+        }
+      }
+  
+      setProperties(allProperties);
+      setUserProperties(userOwnedProperties);
+    } catch (error) {
+      console.error("Error loading properties:", error);
+      showNotification("Error loading properties from the contract. Please verify your contract deployment.", "error");
+    }
+  };
+
+  const handleListProperty = async (location, price) => {
+    try {
+      setLoading(true);
+      const priceInWei = web3.utils.toWei(price.toString(), 'ether');
+  
+      // Use call first to check if the transaction would succeed
+      try {
+        await contract.methods.listProperty(location, priceInWei).call({ from: accounts[selectedAccount] });
+      } catch (error) {
+        console.error("Validation error:", error);
+        showNotification(`Error: ${error.message.split('revert ')[1] || error.message}`, "error");
+        setLoading(false);
+        return;
+      }
+  
+      // Add a transaction in progress marker
+      const tempId = Date.now(); // Use timestamp as a temporary ID
+      setTransactionsInProgress(prev => ({...prev, [`list-${tempId}`]: true}));
+      
+      showNotification("Listing property... Please wait for confirmation", "info");
+  
+      // Then send the actual transaction
+      const receipt = await contract.methods.listProperty(location, priceInWei).send({
+        from: accounts[selectedAccount], // Use selected account
+        type: '0x0',
+        gas: 3000000
+      });
+      
+      console.log("Property listing receipt:", receipt);
+      
+      // Directly reload all properties to make sure we have the latest state
+      await loadProperties(contract, accounts[selectedAccount]);
+      
+      setLoading(false);
+    } catch (error) {
+      console.error("Error listing property:", error);
+      showNotification(`Failed to list property: ${error.message}`, "error");
+      setLoading(false);
+      
+      // Clear any transaction markers
+      setTransactionsInProgress(prev => {
+        const newState = {...prev};
+        Object.keys(newState).forEach(key => {
+          if (key.startsWith('list-')) {
+            delete newState[key];
+          }
+        });
+        return newState;
+      });
+    }
+  };
+
+  const handleAccountChange = (e) => {
+    const accountIndex = parseInt(e.target.value);
+    setSelectedAccount(accountIndex);
+    
+    // Reset state when changing accounts
+    setProperties([]);
+    setUserProperties([]);
+    setLoading(true);
+    
+    // Reload properties for the new account
+    if (contract) {
+      // Re-setup event listeners with the new account
+      setupEventListeners(contract);
+      
+      loadProperties(contract, accounts[accountIndex]).then(() => {
+        setLoading(false);
+        showNotification(`Switched to account: ${accounts[accountIndex].substring(0, 6)}...${accounts[accountIndex].substring(38)}`, "info");
+      });
+    }
+  };
+
+  const handleBuyProperty = async (propertyId, price) => {
+    try {
+      if (!window.confirm(`Are you sure you want to buy this property for ${price} ETH?`)) {
+        return;
+      }
+      
+      setLoading(true);
+      
+      // First check if the user owns the property
+      const isOwner = await contract.methods.isOwner(propertyId).call({ from: accounts[selectedAccount] });
+      if (isOwner) {
+        showNotification("You cannot buy your own property", "error");
+        setLoading(false);
+        return;
+      }
+      
+      // Mark this transaction as in progress
+      setTransactionsInProgress(prev => ({...prev, [`buy-${propertyId}`]: true}));
+      
+      const priceInWei = web3.utils.toWei(price.toString(), 'ether');
+      
+      showNotification("Processing purchase... Please wait for confirmation", "info");
+  
+      const receipt = await contract.methods.buyProperty(propertyId).send({
+        from: accounts[selectedAccount],
+        value: priceInWei,
+        gas: 3000000,
+        type: '0x0'
+      });
+      
+      console.log("Property purchase receipt:", receipt);
+      
+      // Reload property data in case event listener missed it
+      await loadProperties(contract, accounts[selectedAccount]);
+      
+      setLoading(false);
+    } catch (error) {
+      console.error("Error buying property:", error);
+      
+      // Extract the specific error message
+      let errorMessage = error.message;
+      if (error.message.includes("revert")) {
+        errorMessage = error.message.split("revert")[1] || error.message;
+      }
+      
+      showNotification(`Failed to buy property: ${errorMessage}`, "error");
+      setLoading(false);
+      
+      // Clear transaction in progress
+      setTransactionsInProgress(prev => {
+        const updated = {...prev};
+        delete updated[`buy-${propertyId}`];
+        return updated;
+      });
+    }
+  };
+
+  const togglePropertyForSale = async (propertyId) => {
+    try {
+      setLoading(true);
+      
+      // Debug - Check ownership first
+      const isOwner = await contract.methods.isOwner(propertyId).call({ 
+        from: accounts[selectedAccount] 
+      });
+      
+      console.log("Is selected account the owner?", isOwner);
+      
+      if (!isOwner) {
+        showNotification("You are not the owner of this property", "error");
+        setLoading(false);
+        return;
+      }
+      
+      // Mark this transaction as in progress
+      setTransactionsInProgress(prev => ({...prev, [`toggle-${propertyId}`]: true}));
+      
+      showNotification("Updating property status... Please wait for confirmation", "info");
+      
+      const receipt = await contract.methods.toggleForSale(propertyId).send({
+        from: accounts[selectedAccount],  // Use selectedAccount instead of accounts[0]
+        type: '0x0',
+        gas: 3000000
+      });
+      
+      console.log("Toggle property sale status receipt:", receipt);
+      
+      // Manually update the property in the UI since there's no event for toggle
+      await updatePropertyInUI(contract, propertyId);
+      
+      setLoading(false);
+      
+      const property = properties.find(p => p.id === propertyId);
+      if (property) {
+        const newStatus = !property.isForSale;
+        showNotification(`Property is now ${newStatus ? 'for sale' : 'not for sale'}`, "success");
+      }
+    } catch (error) {
+      console.error("Error toggling property for sale status:", error);
+      
+      // Extract the specific error message
+      let errorMessage = error.message;
+      if (error.message.includes("revert")) {
+        errorMessage = error.message.split("revert")[1] || error.message;
+      }
+      
+      showNotification(`Failed to update property status: ${errorMessage}`, "error");
+      setLoading(false);
+      
+      // Clear transaction in progress
+      setTransactionsInProgress(prev => {
+        const updated = {...prev};
+        delete updated[`toggle-${propertyId}`];
+        return updated;
+      });
+    }
+  };
+
+  const updatePropertyPrice = async (propertyId, newPrice) => {
+    try {
+      setLoading(true);
+      
+      // First verify ownership with the selected account
+      const isOwner = await contract.methods.isOwner(propertyId).call({ 
+        from: accounts[selectedAccount] 
+      });
+      
+      console.log("Is selected account the owner?", isOwner);
+      
+      if (!isOwner) {
+        showNotification("You are not the owner of this property", "error");
+        setLoading(false);
+        return;
+      }
+      
+      // Mark this transaction as in progress
+      setTransactionsInProgress(prev => ({...prev, [`price-${propertyId}`]: true}));
+      
+      const priceInWei = web3.utils.toWei(newPrice.toString(), 'ether');
+      
+      showNotification("Updating property price... Please wait for confirmation", "info");
+      
+      const receipt = await contract.methods.updatePropertyPrice(propertyId, priceInWei).send({
+        from: accounts[selectedAccount], // Use selectedAccount instead of accounts[0]
+        type: '0x0',
+        gas: 3000000
+      });
+      
+      console.log("Update property price receipt:", receipt);
+      
+      // Manually update the property in the UI
+      await updatePropertyInUI(contract, propertyId);
+      
+      setLoading(false);
+      showNotification(`Property price updated to ${newPrice} ETH`, "success");
+    } catch (error) {
+      console.error("Error updating property price:", error);
+      
+      // Extract the specific error message
+      let errorMessage = error.message;
+      if (error.message.includes("revert")) {
+        errorMessage = error.message.split("revert")[1] || error.message;
+      }
+      
+      showNotification(`Failed to update property price: ${errorMessage}`, "error");
+      setLoading(false);
+      
+      // Clear transaction in progress
+      setTransactionsInProgress(prev => {
+        const updated = {...prev};
+        delete updated[`price-${propertyId}`];
+        return updated;
+      });
+    }
+  };
+
+  if (!web3) {
+    return <div className="loading">Loading Web3, accounts, and contract...</div>;
+  }
+
+  return (
+    <div className="App">
+      {notification.show && (
+        <Notification 
+          message={notification.message} 
+          type={notification.type} 
+          onClose={() => setNotification({ show: false, message: '', type: '' })}
+        />
+      )}
+      
+      <header className="App-header">
+        <h1>Decentralized Real Estate Marketplace</h1>
+        <p>Account: {accounts[selectedAccount]}</p>
+        <div className="account-selector">
+          <label>Select Account: </label>
+          <select onChange={handleAccountChange} value={selectedAccount}>
+            {accounts.map((account, index) => (
+              <option key={account} value={index}>
+                Account {index}: {account.substring(0, 6)}...{account.substring(38)}
+              </option>
+            ))}
+          </select>
+        </div>
+      </header>
+
+      <div className="tabs">
+        <button
+          className={activeTab === 'marketplace' ? 'active' : ''}
+          onClick={() => setActiveTab('marketplace')}
+        >
+          Marketplace
+        </button>
+        <button
+          className={activeTab === 'my-properties' ? 'active' : ''}
+          onClick={() => setActiveTab('my-properties')}
+        >
+          My Properties
+        </button>
+        <button
+          className={activeTab === 'list-property' ? 'active' : ''}
+          onClick={() => setActiveTab('list-property')}
+        >
+          List Property
+        </button>
+      </div>
+
+      <div className="container">
+        {loading ? (
+          <LoadingSpinner message="Processing transaction..." />
+        ) : (
+          <>
+            {activeTab === 'marketplace' && (
+              <PropertyList
+                properties={properties.filter(p => p.isForSale)}
+                onBuy={handleBuyProperty}
+              />
+            )}
+            {activeTab === 'my-properties' && (
+              <UserProperties
+                properties={userProperties}
+                onToggleForSale={togglePropertyForSale}
+                onUpdatePrice={updatePropertyPrice}
+              />
+            )}
+            {activeTab === 'list-property' && (
+              <PropertyForm onSubmit={handleListProperty} />
+            )}
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default App;

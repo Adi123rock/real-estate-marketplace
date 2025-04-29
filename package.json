@@ -1,0 +1,9 @@
+{
+  "scripts": {
+    "truffle": "truffle console --network development"
+    
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.9.3"
+  }
+}
