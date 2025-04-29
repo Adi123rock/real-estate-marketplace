@@ -1,70 +1,67 @@
 import React, { useState } from 'react';
 
-function PropertyForm({ onSubmit }) {
+const PropertyForm = ({ onSubmit }) => {
   const [location, setLocation] = useState('');
   const [price, setPrice] = useState('');
-  const [errors, setErrors] = useState({});
-
-  const validate = () => {
-    const newErrors = {};
-    
-    if (!location.trim()) {
-      newErrors.location = 'Property location is required';
-    }
-    
-    if (!price) {
-      newErrors.price = 'Price is required';
-    } else if (isNaN(price) || parseFloat(price) <= 0) {
-      newErrors.price = 'Price must be a positive number';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const [error, setError] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    
-    if (validate()) {
-      onSubmit(location, parseFloat(price));
-      // Reset form
-      setLocation('');
-      setPrice('');
-      setErrors({});
+    setError('');
+
+    if (!location || !price) {
+      setError('Please fill in all fields');
+      return;
     }
+
+    if (isNaN(price) || parseFloat(price) <= 0) {
+      setError('Please enter a valid price');
+      return;
+    }
+
+    onSubmit(location, parseFloat(price));
+    setLocation('');
+    setPrice('');
   };
 
   return (
-    <div className="property-form">
+    <div className="form-container">
       <h2>List a New Property</h2>
-      <form onSubmit={handleSubmit}>
+      <form onSubmit={handleSubmit} className="property-form">
         <div className="form-group">
-          <label>Property Location:</label>
+          <label htmlFor="location">Property Location</label>
           <input
             type="text"
+            id="location"
             value={location}
             onChange={(e) => setLocation(e.target.value)}
-            placeholder="123 Main St, CryptoCity"
+            placeholder="Enter property location"
+            className="form-input"
           />
-          {errors.location && <span className="error">{errors.location}</span>}
         </div>
-        
+
         <div className="form-group">
-          <label>Price (ETH):</label>
+          <label htmlFor="price">Price (ETH)</label>
           <input
             type="number"
-            step="0.01"
+            id="price"
             value={price}
             onChange={(e) => setPrice(e.target.value)}
-            placeholder="1.0"
+            placeholder="Enter price in ETH"
+            step="0.01"
+            min="0"
+            className="form-input"
           />
-          {errors.price && <span className="error">{errors.price}</span>}
         </div>
-        
-        <button type="submit" className="btn-primary">List Property</button>
+
+        {error && <div className="error-message">{error}</div>}
+
+        <button type="submit" className="btn btn-primary">
+          List Property
+        </button>
       </form>
     </div>
   );
-}
+};
 
 export default PropertyForm;

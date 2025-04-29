@@ -3,9 +3,8 @@
     "truffle": "truffle migrate --network development",
     "web": "cd ./client && npm start",
     "dev": "npm run web "
-    
   },
   "dependencies": {
-    "@openzeppelin/contracts": "^4.9.3"
+    "@openzeppelin/contracts": "^4.9.6"
   }
 }

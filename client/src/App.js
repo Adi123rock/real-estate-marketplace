@@ -649,7 +649,7 @@ function App() {
   };
 
   if (!web3) {
-    return <div className="loading">Loading Web3, accounts, and contract...</div>;
+    return <div className="loading-spinner">Loading Web3, accounts, and contract...</div>;
   }
 
   return (
@@ -663,65 +663,107 @@ function App() {
       )}
       
       <header className="App-header">
-        <h1>Decentralized Real Estate Marketplace</h1>
-        <p>Account: {accounts[selectedAccount]}</p>
-        <div className="account-selector">
-          <label>Select Account: </label>
+        <div className="logo-section">
+          <img src="/logo.svg" alt="DRealEstate" height="32" />
+          <h1>DRealEstate</h1>
+        </div>
+
+        <nav className="nav-links">
+          <button
+            className={activeTab === 'marketplace' ? 'active' : ''}
+            onClick={() => setActiveTab('marketplace')}
+          >
+            Marketplace
+          </button>
+          <button
+            className={activeTab === 'my-properties' ? 'active' : ''}
+            onClick={() => setActiveTab('my-properties')}
+          >
+            My Properties
+          </button>
+          <button
+            className={activeTab === 'list-property' ? 'active' : ''}
+            onClick={() => setActiveTab('list-property')}
+          >
+            List Property
+          </button>
+        </nav>
+
+        <div className="wallet-section">
           <select onChange={handleAccountChange} value={selectedAccount}>
             {accounts.map((account, index) => (
               <option key={account} value={index}>
-                Account {index}: {account.substring(0, 6)}...{account.substring(38)}
+                {account.substring(0, 6)}...{account.substring(38)}
               </option>
             ))}
           </select>
         </div>
       </header>
 
-      <div className="tabs">
-        <button
-          className={activeTab === 'marketplace' ? 'active' : ''}
-          onClick={() => setActiveTab('marketplace')}
-        >
-          Marketplace
-        </button>
-        <button
-          className={activeTab === 'my-properties' ? 'active' : ''}
-          onClick={() => setActiveTab('my-properties')}
-        >
-          My Properties
-        </button>
-        <button
-          className={activeTab === 'list-property' ? 'active' : ''}
-          onClick={() => setActiveTab('list-property')}
-        >
-          List Property
-        </button>
-      </div>
-
-      <div className="container">
-        {loading ? (
-          <LoadingSpinner message="Processing transaction..." />
-        ) : (
+      <main>
+        {activeTab === 'marketplace' && (
           <>
-            {activeTab === 'marketplace' && (
-              <PropertyList
-                properties={properties.filter(p => p.isForSale)}
-                onBuy={handleBuyProperty}
+            <div className="search-section">
+              <input
+                type="text"
+                placeholder="Search by location, name..."
+                className="search-input"
               />
-            )}
-            {activeTab === 'my-properties' && (
-              <UserProperties
-                properties={userProperties}
-                onToggleForSale={togglePropertyForSale}
-                onUpdatePrice={updatePropertyPrice}
-              />
-            )}
-            {activeTab === 'list-property' && (
-              <PropertyForm onSubmit={handleListProperty} />
-            )}
+              <button className="filter-button">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2 4H14M4 8H12M6 12H10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+                <span>Filters</span>
+              </button>
+            </div>
+
+            <div className="feature-cards">
+              <div className="feature-card">
+                <div className="icon">🏠</div>
+                <h3>Verified Properties</h3>
+                <p>All property listings are verified on the blockchain</p>
+              </div>
+              <div className="feature-card">
+                <div className="icon">🔒</div>
+                <h3>Secure Payments</h3>
+                <p>Pay with cryptocurrency securely and instantly</p>
+              </div>
+              <div className="feature-card">
+                <div className="icon">⚡</div>
+                <h3>Instant Transfer</h3>
+                <p>Property ownership transfers immediately</p>
+              </div>
+            </div>
           </>
         )}
-      </div>
+
+        <div className="container">
+          {loading ? (
+            <div className="loading-spinner">
+              <LoadingSpinner message="Processing transaction..." />
+            </div>
+          ) : (
+            <>
+              {activeTab === 'marketplace' && (
+                <PropertyList
+                  properties={properties.filter(p => p.isForSale)}
+                  onBuy={handleBuyProperty}
+                />
+              )}
+              {activeTab === 'my-properties' && (
+                <UserProperties
+                  properties={userProperties}
+                  onToggleForSale={togglePropertyForSale}
+                  onUpdatePrice={updatePropertyPrice}
+                />
+              )}
+              {activeTab === 'list-property' && (
+                <PropertyForm onSubmit={handleListProperty} />
+              )}
+            </>
+          )}
+        </div>
+      </main>
     </div>
   );
 }
