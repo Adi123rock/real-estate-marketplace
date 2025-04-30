@@ -90,16 +90,14 @@ cd ..
 1. Ensure Ganache is running
 2. Deploy the contracts using Truffle
 ```bash
-truffle compile
-truffle migrate --reset
+npm run truffle
 ```
 
 ### 6. Run the Application
 
 1. Start the development server
 ```bash
-cd client
-npm run dev
+npm run web
 ```
 
 2. Open your browser and navigate to [http://localhost:3000](http://localhost:3000)
@@ -130,7 +128,7 @@ npm run dev
 ## Team Details
 
 - **ADITYA (230005003)**
-- **ASHISH DONTH (230008011)**
+- **ASHISH (230008011)**
 - **HIMANSHU (230002029)**
 - **SRIKANTH (230001018)** 
 - **JOTHIRMAI (230003032)**
