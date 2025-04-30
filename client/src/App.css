@@ -841,3 +841,24 @@ select {
   border-radius: 2px;
   box-shadow: var(--neon-glow);
 }
+
+.properties-header {
+  text-align: center;
+  margin-bottom: 2rem;
+  padding: 1rem;
+  background: var(--card-bg);
+  border-radius: 8px;
+  box-shadow: var(--card-shadow);
+}
+
+.section-title {
+  color: var(--text-primary);
+  font-size: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+.properties-subtitle {
+  color: var(--text-secondary);
+  font-size: 1.1rem;
+  margin: 0;
+}
