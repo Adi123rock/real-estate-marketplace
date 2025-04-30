@@ -25258,8 +25258,8 @@
     "5777": {
       "events": {},
       "links": {},
-      "address": "0x4320B8Db2c800CC48B40766410C73872984B755E",
-      "transactionHash": "0x6cfb0bfd9ef2416560d6a64c6a278201ff61a23d9eec43401a5b3dbf8b8d963d"
+      "address": "0xe97fEa4394b7De23bD4b094665A2f54BA0521297",
+      "transactionHash": "0xaabfdb53dd5396f70278cedb6fa7b3152ea2983bd193da05e2ebdffdd2972b67"
     },
     "1745872825693": {
       "events": {},
@@ -25269,7 +25269,7 @@
     }
   },
   "schemaVersion": "3.4.16",
-  "updatedAt": "2025-04-29T20:22:02.939Z",
+  "updatedAt": "2025-04-30T07:47:09.836Z",
   "networkType": "ethereum",
   "devdoc": {
     "details": "Implements a decentralized marketplace for real estate properties",

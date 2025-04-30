@@ -415,7 +415,7 @@ function App() {
       setUserProperties(userOwnedProperties);
     } catch (error) {
       console.error("Error loading properties:", error);
-      showNotification("Error loading properties from the contract", "error");
+      // showNotification("Error loading properties from the contract", "error");
     }
   };
 
